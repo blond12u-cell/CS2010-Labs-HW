@@ -1,0 +1,153 @@
+local GLASS_SLOT = 2 -- Ensure your glass block is in this slot
+
+-- --- Core Utility Functions ---
+
+local function victory()
+    print("We finished the maze!")
+    turtle.up()
+    -- Spin around to celebrate
+    for _ = 1, 4 do
+        turtle.turnRight()
+    end   
+end
+
+local function look()
+    -- Check the block underneath for start (green) or end (yellow) markers
+    local ok, data = turtle.inspectDown()
+    
+    if ok and data.name and data.name:find("yellow") then
+        victory()
+        return true
+    end   
+    
+    return false
+end
+
+-- --- Custom Navigation Markers ---
+
+-- Checks for a glass block directly above the turtle
+local function inspect_up()
+    local ok, data = turtle.inspectUp()
+    -- We look for "glass" in the block's name property
+    return ok and data.name and data.name:find("glass")
+end
+
+-- Places a glass block above the turtle
+local function place_glass()
+    local current_slot = turtle.getSelectedSlot()
+    turtle.select(GLASS_SLOT)
+    local success = turtle.placeUp()
+    turtle.select(current_slot) -- Return to the previous slot
+    return success
+end
+
+-- --- Directional Check Helpers ---
+
+-- Checks if there is a block to the turtle's right without turning
+local function detect_right()
+    turtle.turnRight()
+    local is_blocked = turtle.detect()
+    turtle.turnLeft() -- Turn back to original orientation
+    return is_blocked
+end
+
+-- Checks if there is a block to the turtle's left without turning
+local function detect_left()
+    turtle.turnLeft()
+    local is_blocked = turtle.detect()
+    turtle.turnRight() -- Turn back to original orientation
+    return is_blocked
+end
+
+-- --- Initialization ---
+
+-- Ensure the turtle has fuel
+turtle.select(1) -- Select fuel slot (slot 1)
+turtle.refuel(10)
+if turtle.getFuelLevel() < 10 then
+    print("Insert fuel in slot 1")
+    return
+end
+
+-- --- Main Movement Logic ---
+
+while true do
+    -- 1. Check for win condition
+    local done = look()
+    if done then 
+        return
+    end
+    
+    local moved = false
+    
+    -- 2. HIGH PRIORITY: Glass Detection (Marker Found)
+    -- If a marker is detected, turn right and move forward.
+    if inspect_up() then
+        print("Marker found above (Glass). Turning right to avoid backtracking and moving forward.")
+        turtle.turnRight()
+        if turtle.forward() then 
+            moved = true
+        end
+    end
+
+    -- Get status of all three possible paths (Front, Right, Left)
+    local is_front_clear = not turtle.detect()
+    local is_right_clear = not detect_right()
+    local is_left_clear = not detect_left()
+
+    -- 3. SECOND PRIORITY: 3-Way Intersection (Marking)
+    -- If all three paths are clear, mark the intersection, then move forward.
+    if is_front_clear and is_right_clear and is_left_clear then
+        print("3-Way Intersection detected. Placing glass marker and moving straight.")
+        place_glass()
+        if turtle.forward() then 
+            moved = true
+        end
+
+    -- 4. STANDARD MAZE LOGIC (Right-Hand Rule)
+    
+    -- RHR Priority 1: Go Right (If right is clear)
+    elseif is_right_clear then
+        print("RHR: Right side clear. Turning right and moving.")
+        turtle.turnRight()
+        if turtle.forward() then 
+            moved = true
+        end
+    
+    -- RHR Priority 2: Go Straight (If front is clear)
+    elseif is_front_clear then
+        print("RHR: Front clear. Moving straight.")
+        if turtle.forward() then 
+            moved = true
+        end
+
+    -- RHR Priority 3: Go Left (If front and right are blocked)
+    elseif is_left_clear then
+        print("RHR: Left side clear. Turning left and moving.")
+        turtle.turnLeft()
+        if turtle.forward() then 
+            moved = true
+        end
+    
+    -- RHR Priority 4: Dead End (Turn around)
+    else
+        print("Dead end. Turning around (180 degrees).")
+        turtle.turnLeft() -- Turn 90
+        turtle.turnLeft() -- Turn another 90 (180 total)
+        -- Note: No movement in this step, but now facing the way we came from.
+    end
+
+    ::continue_loop:: -- This label is used to skip logic when glass is detected
+
+    -- 5. Safety Checks
+    if not moved and turtle.getFuelLevel() == 0 then
+        print("Out of fuel. Halting.")
+        return
+    end
+    
+    -- If we tried a move direction (clear path) but failed to move
+    if not moved and (is_front_clear or is_right_clear or is_left_clear) then
+        print("Movement failed unexpectedly despite clear path. Halting.")
+        return
+    end
+end
